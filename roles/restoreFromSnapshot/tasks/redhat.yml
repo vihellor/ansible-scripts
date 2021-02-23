@@ -1,0 +1,73 @@
+---
+- name: Check backup/boot exists
+  stat:
+    path: /root/backup/boot
+  register: stat_result
+
+- name: Check lvm snap exists
+  command: lvdisplay 'centos7/snap'
+  no_log: True
+  changed_when: False
+  register: lvdisplay
+  failed_when: lvdisplay.rc != 0
+
+- name: merge snapshot into lv
+  command: lvconvert --merge /dev/centos7/snap
+  when: lvdisplay.rc == 0
+  register: merge
+
+- name: mapping lv value to pv value
+  command: lvs -ao +devices
+  when: lvdisplay.rc == 0
+  register: map
+
+- name: Deleting boot data
+  command: /bin/rm -rf /boot/*
+  args:
+    warn: false
+
+- name: restore boot
+  synchronize:
+    src: /root/backup/boot/
+    dest: /boot/
+    delete: yes
+    recursive: yes
+  delegate_to: "{{ inventory_hostname }}" 
+
+- name: restore boot
+  synchronize:
+    src: /root/backup/boot/
+    dest: /boot/
+    delete: yes
+    recursive: yes
+  delegate_to: "{{ inventory_hostname }}"
+
+- name: reconfigure grub for 7 or 8
+  command: grub-install /dev/sda
+  when: ansible_facts['os_family'] == 'RedHat' and ansible_facts  ['distribution_major_version'] >= '7'
+
+- name: reconfigure grub for 6
+  command: grub2-install /dev/sda
+  when: ansible_facts['os_family'] == 'RedHat' and ansible_facts ['distribution_major_version'] == '6'
+
+- name: Check if is running uefi
+  command: '[ -d /sys/firmware/efi ]'
+  register: uefi
+
+- name: UEFI boot setup for 7 or 8
+  command: efibootmgr -c -w -L "Red Hat Enterprise Linux" -d /dev/vda -p 1 -l "\EFI\redhat\grubx64.efi"
+  when: ansible_facts['os_family'] == 'RedHat' and ansible_facts  ['distribution_major_version'] >= '7' and uefi.rc == 0
+
+- name: UEFI boot setup for 6
+  command: efibootmgr -c -w -L "Backup Red Hat Enterprise Linux" -d /dev/sda -p 1 -l "\EFI\redhat\grub.efi"
+  when: ansible_facts['os_family'] == 'RedHat' and ansible_facts ['distribution_major_version'] == '6' and uefi.rc == 0
+
+- name: Reboot for lvs to rollback
+  reboot:
+    msg: "Reboot initiated by Ansible for lvm snapshot rollback"
+    connect_timeout: 5
+    reboot_timeout: 300
+    pre_reboot_delay: 0
+    post_reboot_delay: 30
+    test_command: uptime
+  when: merge.rc == 0 and map.rc == 0

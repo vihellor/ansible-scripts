@@ -1,5 +1,5 @@
 ---
-- hosts: hola
+- hosts: phys
   remote_user: root
   roles:
-    - common
+    - snapshotLVM

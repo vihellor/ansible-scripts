@@ -1,0 +1,32 @@
+- name: Ensuring backup directory
+  file:
+    state: directory
+    path: /root/backup
+
+- name: Removing boot files
+  file:
+    state: absent
+    path: /root/backup/boot
+
+- name: Backup boot directory
+  synchronize:
+    src: /boot
+    dest: /root/backup/
+    delete: yes
+    recursive: yes
+  delegate_to: "{{ inventory_hostname }}" 
+
+- name: Make sure test volume does not exist
+  lvol:
+    vg: centos7
+    lv: snap 
+    state: absent
+    force: yes
+
+- name: Create a snapshot volume of the test logical volume.
+  lvol:
+    vg: centos7
+    lv: root
+    snapshot: snap
+    size: 90%FREE
+...
